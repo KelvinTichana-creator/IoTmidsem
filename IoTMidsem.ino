@@ -1,94 +1,74 @@
 #include <LiquidCrystal_I2C.h>
-
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
-#include <liquidCrystal_I2C.h>
 #define led 2
+#define relay 33
+const char WIFI_SSID[] = "DZ";
+const char WIFI_PASSWORD[] = "0011223344";
+WebServer server(80);
+String HOST_NAME = "http://172.16.1.140";  // change to your PC's IP address
+String PATH_NAME = "/iot/insert_data.php";
+String queryString = "?TankID=2&WaterLevel=219";
+
+
+unsigned long previousTempMillis = 0;  // will store last time LED was updated
+unsigned long tempInterval = 10000;  // will store last time LED was updated
+
 LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address 0x3F, 16 column and 2 rows
 
 #define TRIG_PIN 26 // ESP32 pin GIOP26 connected to Ultrasonic Sensor's TRIG pin
 #define ECHO_PIN 25 // ESP32 pin GIOP25 connected to Ultrasonic Sensor's ECHO pin
 #define REDLED 19
-#define CW 33
-#define CCW 4
 float duration_us, distance_cm, minimum_depth, tank_height, current_level;
-
-const char* ssid = "DZ";
-const char* password = "0011223344";
-
-WebServer server(80);
-
 
 
 void handleManualON() {
+  Serial.println("manual on");
   digitalWrite(led, HIGH );
-  server.send(200, "text/plain", "turn motor on!");
-  digitalWrite(CW,HIGH); //Motor runs clockwise//
-
-  delay(1000); //for 1 second//
-
-  digitalWrite(CW, LOW); //Motor stops//
-
-  digitalWrite(CCW, HIGH);//Motor runs counter-clockwise//
-
-  delay(1000); //For 1 second//
-
-  digitalWrite(CCW, LOW); //Motor stops//
-  measureDistance();
-
+  digitalWrite(relay, HIGH);
   //digitalWrite(led, 0);
 }
 
 void handleManualOFF() {
+  Serial.println("manual off");
   digitalWrite(led, LOW );
+  digitalWrite(relay,LOW);
   server.send(200, "text/plain", "turn motor off!");
   //digitalWrite(led, 0);
-  digitalWrite(CCW, LOW);
-  digitalWrite(CCW, LOW);
 }
 
 void handleAUTO() {
-  for(int i=0;i<20;i++){   
-  server.send(200, "text/plain", "write code to condition motor depending on water level!");
-  digitalWrite(led, HIGH);
-  delay(2000);
-  digitalWrite(led, LOW);
-  delay(1000);
-  while(distance_cm<21) {
-  digitalWrite(CW,HIGH); //Motor runs clockwise//
-
-  delay(1000); //for 1 second//
-
-  digitalWrite(CW, LOW); //Motor stops//
-
-  digitalWrite(CCW, HIGH);//Motor runs counter-clockwise//
-
-  delay(1000); //For 1 second//
-
-  digitalWrite(CCW, LOW); //Motor stops//
-  measureDistance();
-  if(distance_cm>179){
-    digitalWrite(CCW, LOW);
-    digitalWrite(CCW, LOW);
+   //if(distance_cm<20){
     
-  }
+    server.send(200, "text/plain", "turn motor off!");
+//      digitalWrite(led,HIGH);
+//      delay(1000);
+//      digitalWrite(led,LOW);
 
-} 
-  
+    if(distance_cm<=20){
+      digitalWrite(led,HIGH);
+      digitalWrite(relay,HIGH);
+      if(distance_cm>30){
+        digitalWrite(led,LOW);
+      digitalWrite(relay,LOW);
+        }
+      }
+      
+    } 
 
-  //digitalWrite(led, 0);
-  }
-  
-}
 
+void setup() {
 
-void setup(void) {
   pinMode(led, OUTPUT);
-  pinMode(CW, OUTPUT); //Set CW as an output//
-  pinMode(CCW, OUTPUT); //Set CCW as an output//
+  pinMode(relay, OUTPUT);
   digitalWrite(led, 0);
+  WiFi.mode(WIFI_STA);
+
+
+  
   lcd.init();               // initialize the lcd
   lcd.backlight();          // open the backlight
   pinMode(TRIG_PIN, OUTPUT); // config trigger pin to output mode
@@ -97,19 +77,17 @@ void setup(void) {
   Serial.begin(115200);
   minimum_depth = 5;
   tank_height = 200;
-  Serial.begin(115200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
-
-  // Wait for connection
+  
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println("Connecting");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
+
   Serial.println("");
   Serial.print("Connected to ");
-  Serial.println(ssid);
+  Serial.println(WIFI_SSID);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
@@ -117,46 +95,45 @@ void setup(void) {
     Serial.println("MDNS responder started");
   }
 
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
+
   server.on("/OFF", handleManualOFF);
   server.on("/ON", handleManualON);
   server.on("/AUTO", handleAUTO);
 
-//  server.on("/inline", []() {
-//    server.send(200, "text/plain", "this works as well");
-//  });
-
-//  server.onNotFound(handleNotFound);
-
   server.begin();
   Serial.println("HTTP server started");
-}
 
-void loop(void) {
+  HTTPClient http;
+
+  http.begin(HOST_NAME + PATH_NAME + queryString);  //HTTP
+  int httpCode = http.GET();
+
+  // httpCode will be negative on error
+  if (httpCode > 0) {
+    // file found at server
+    if (httpCode == HTTP_CODE_OK) {
+      String payload = http.getString();
+      Serial.println(payload);
+    } else {
+      // HTTP header has been send and Server response header has been handled
+      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+    }
+  } else {
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+
+  http.end();
+  }
+
+void loop() {
+
   server.handleClient();
   delay(2);//allow the cpu to switch to other tasks
   // generate 10-microsecond pulse to TRIG pin
-  //digitalWrite(TRIG_PIN, HIGH);
-  //delayMicroseconds(10);
-  //digitalWrite(TRIG_PIN, LOW);
-
-  // measure duration of pulse from ECHO pin
-  //duration_us = pulseIn(ECHO_PIN, HIGH);
-
-  // calculate the distance
-  distance_cm = 0.017 * duration_us;
-  current_level = tank_height - distance_cm;
-
-// change distance to current level for deployment
-
-  lcd.clear();
-  lcd.setCursor(0, 0); // start to print at the first row
-  lcd.print("Water Level: ");
-  lcd.print(distance_cm); /// subtract this distance from length of tank
-
-  delay(500);
-}
-float measureDistance(){
-  // generate 10-microsecond pulse to TRIG pin
+  unsigned long currentTempMillis = millis();
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
@@ -167,6 +144,61 @@ float measureDistance(){
   // calculate the distance
   distance_cm = 0.017 * duration_us;
   current_level = tank_height - distance_cm;
-  return distance_cm;
 
+  // change distance to current level for deployment
+//
+//  if(distance<5){
+//    while(distance<200){
+//      digitalWrite(REDLED,HIGH);
+//      }
+//    }
+
+
+ if (isnan(distance_cm) ) {
+    ////Serial.println("Failed to read DHT11");
+    //delay(1000);
+  } else {
+     
+
+  if (currentTempMillis - previousTempMillis >= tempInterval) {
+    previousTempMillis = currentTempMillis;
+    HTTPClient http;
+
+    String HOST_NAME1 = "http://172.16.1.140";  // change to your PC's IP address
+    String PATH_NAME1 = "/iot/insert_data.php";
+    String queryString1 = "?TankID=2&WaterLevel=" + String(distance_cm);
+
+    http.begin(HOST_NAME1 + PATH_NAME1 + queryString1);  //HTTP
+    int httpCode = http.GET();
+
+    // httpCode will be negative on error
+    if (httpCode > 0) {
+      // file found at server
+      if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.println(payload);
+      } else {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+      }
+    } else {
+      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+
+    http.end();
+  }
+
+
+
+
+}
+    
+  lcd.clear();
+  lcd.setCursor(0, 0); // start to print at the first row
+  lcd.print("WaterLevel: ");
+  lcd.print(distance_cm); /// subtract this distance from length of tank
+
+  delay(500);
+  digitalWrite(led,LOW);
+  digitalWrite(R,HIGH);
 }
