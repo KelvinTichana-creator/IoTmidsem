@@ -4,7 +4,7 @@
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
-#define led 2
+#define led 19
 #define relay 33
 const char WIFI_SSID[] = "DZ";
 const char WIFI_PASSWORD[] = "0011223344";
@@ -15,7 +15,7 @@ String queryString = "?TankID=2&WaterLevel=219";
 
 
 unsigned long previousTempMillis = 0;  // will store last time LED was updated
-unsigned long tempInterval = 10000;  // will store last time LED was updated
+unsigned long tempInterval = 1000;  // will store last time LED was updated
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address 0x3F, 16 column and 2 rows
 
@@ -27,38 +27,37 @@ float duration_us, distance_cm, minimum_depth, tank_height, current_level;
 
 void handleManualON() {
   Serial.println("manual on");
-  digitalWrite(led, HIGH );
-  digitalWrite(relay, HIGH);
-  //digitalWrite(led, 0);
+  while(1){
+    redund();
+    digitalWrite(led, HIGH);
+    digitalWrite(relay,HIGH);
+    }
 }
 
 void handleManualOFF() {
   Serial.println("manual off");
-  digitalWrite(led, LOW );
-  digitalWrite(relay,LOW);
-  server.send(200, "text/plain", "turn motor off!");
-  //digitalWrite(led, 0);
+  while(1){
+    redund();
+    digitalWrite(led, LOW);
+    digitalWrite(relay,LOW);
+    }
 }
 
 void handleAUTO() {
-   //if(distance_cm<20){
-    
-    server.send(200, "text/plain", "turn motor off!");
-//      digitalWrite(led,HIGH);
-//      delay(1000);
-//      digitalWrite(led,LOW);
-
-    if(distance_cm<=20){
-      digitalWrite(led,HIGH);
-      digitalWrite(relay,HIGH);
-      if(distance_cm>30){
-        digitalWrite(led,LOW);
-      digitalWrite(relay,LOW);
+  while(1){
+    redund();
+    if(distance_cm<20){
+       while(distance_cm<=50){
+        redund();
+        Serial.println("manual off");
+        digitalWrite(led, HIGH);
+        digitalWrite(relay,HIGH);
         }
-      }
-      
+     digitalWrite(led, LOW);
+     digitalWrite(relay,LOW);
+      }   
     } 
-
+  }
 
 void setup() {
 
@@ -66,8 +65,6 @@ void setup() {
   pinMode(relay, OUTPUT);
   digitalWrite(led, 0);
   WiFi.mode(WIFI_STA);
-
-
   
   lcd.init();               // initialize the lcd
   lcd.backlight();          // open the backlight
@@ -130,7 +127,13 @@ void setup() {
 
 void loop() {
 
-  server.handleClient();
+  redund();
+  digitalWrite(led,LOW);
+  digitalWrite(relay,HIGH);
+}
+
+void redund(){
+      server.handleClient();
   delay(2);//allow the cpu to switch to other tasks
   // generate 10-microsecond pulse to TRIG pin
   unsigned long currentTempMillis = millis();
@@ -144,14 +147,6 @@ void loop() {
   // calculate the distance
   distance_cm = 0.017 * duration_us;
   current_level = tank_height - distance_cm;
-
-  // change distance to current level for deployment
-//
-//  if(distance<5){
-//    while(distance<200){
-//      digitalWrite(REDLED,HIGH);
-//      }
-//    }
 
 
  if (isnan(distance_cm) ) {
@@ -187,10 +182,6 @@ void loop() {
 
     http.end();
   }
-
-
-
-
 }
     
   lcd.clear();
@@ -199,6 +190,4 @@ void loop() {
   lcd.print(distance_cm); /// subtract this distance from length of tank
 
   delay(500);
-  digitalWrite(led,LOW);
-  digitalWrite(R,HIGH);
-}
+  }
